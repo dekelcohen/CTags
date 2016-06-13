@@ -421,7 +421,8 @@ class CTagsTest(unittest.TestCase):
                 'fields': None}],
             }
 
-        result = ctags.parse_tag_lines(content)
+        tags_lookup = {}
+        result = ctags.parse_tag_lines(content, tags_lookup)
 
         for key in expected_outputs:
             self.assertEqual(result[key], expected_outputs[key])
@@ -476,7 +477,8 @@ class CTagsTest(unittest.TestCase):
                 'file': ''}]
             }
 
-        result = ctags.parse_tag_lines(content)
+        tags_lookup = {}    
+        result = ctags.parse_tag_lines(content, tags_lookup)
 
         for key in expected_outputs:
             self.assertEqual(result[key], expected_outputs[key])
