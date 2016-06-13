@@ -225,7 +225,9 @@ class RankMgr:
             p_tags = no_scope
 
         p_tags = list(filter(lambda tag: self.pass_def_filter(tag), p_tags))
+        for tag in p_tags:
+            tag.rank_score = self.get_combined_rank(tag, self.mbrParts)
+            
         p_tags = sorted(
-            p_tags, key=lambda tag: self.get_combined_rank(
-                tag, self.mbrParts), reverse=True)
+            p_tags, key=lambda tag: tag.rank_score , reverse=True)
         return p_tags

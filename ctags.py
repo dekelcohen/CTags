@@ -67,7 +67,7 @@ def splits(string, *splitters):
 
 # Tag processing functions
 
-def parse_tag_lines(lines, order_by='symbol', tag_class=None, filters=None):
+def parse_tag_lines(lines, res_coll, order_by='symbol', tag_class=None, filters=None):
     """
     Parse and sort a list of tags.
 
@@ -84,8 +84,6 @@ def parse_tag_lines(lines, order_by='symbol', tag_class=None, filters=None):
     :returns: tag object or dictionary containing a sorted, filtered version
         of the original input tag lines
     """
-    tags_lookup = {}
-
     for line in lines:
         skip = False
 
@@ -116,9 +114,12 @@ def parse_tag_lines(lines, order_by='symbol', tag_class=None, filters=None):
         if skip:  # if a filter was matched, ignore line (filter out)
             continue
 
-        tags_lookup.setdefault(tag[order_by], []).append(tag)
+        if isinstance(res_coll,dict):
+            res_coll.setdefault(tag[order_by], []).append(tag)
+        else:
+            res_coll.append(tag)
 
-    return tags_lookup
+    return res_coll
 
 def post_process_tag(tag):
     """
@@ -549,13 +550,41 @@ class TagFile(object):
         Return the tags from a tag file as a dict.
         """
         filters = kw.get('filters', [])
-        return parse_tag_lines(self.search(True, *tags),
+        tags_lookup = {}
+        return parse_tag_lines(self.search(True, *tags), tags_lookup,
                                tag_class=self.tag_class(), filters=filters)
-
+    
     def get_tags_dict_by_suffix(self, suffix, **kw):
         """
         Return the tags with the given suffix of a tag file as a dict.
         """
         filters = kw.get('filters', [])
-        return parse_tag_lines(self.search_by_suffix(suffix),
+        tags_lookup = {}
+        return parse_tag_lines(self.search_by_suffix(suffix),tags_lookup, 
                                tag_class=self.tag_class(), filters=filters)
+    
+    def get_all_tags_line(self):
+        """
+        Search for one or more tags in the tag file.
+
+        Search a tag file for given tags using a binary search.
+
+        :param exact_match: if search should be an exact or partial match
+
+        :returns: matching tags
+        """        
+        while self.mapped.tell() < self.mapped.size():
+            result = Tag(self.mapped.readline().strip(), self.column)
+            yield(result)
+        return
+
+
+    def get_tags_list(self, *tags, **kw):
+        """
+        Return the tags from a tag file as a dict.
+        """
+        filters = kw.get('filters', [])
+        lstTags = []
+        return parse_tag_lines(self.get_all_tags_line(), lstTags,
+                               tag_class=self.tag_class(), filters=filters)
+

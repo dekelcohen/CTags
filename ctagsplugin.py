@@ -35,7 +35,7 @@ except ImportError:  # running tests
 
 import ctags
 from ctags import (FILENAME, parse_tag_lines, PATH_ORDER, SYMBOL,
-                   TagElements, TagFile)
+                   TagElements, TagFile, Tag)
 from helpers.edit import Edit
 
 from helpers.common import *
@@ -606,24 +606,55 @@ def check_if_building(self, **args):
         return False
     return True
 
+def parse_sym_line(view):
+    region = view.sel()[0]
+    if region.begin() == region.end():  # point
+        region = view.word(region)
+
+        # handle special line endings for Ruby
+        language = view.settings().get('syntax')
+        endings = view.substr(
+            sublime.Region(
+                region.end(),
+                region.end() + 1))
+
+        if 'Ruby' in language and self.endings.match(endings):
+            region = sublime.Region(region.begin(), region.end() + 1)
+    symbol = view.substr(region)
+
+    sym_line = view.substr(view.line(region))
+    (row, col) = view.rowcol(region.begin())
+    line_to_symbol = sym_line[:col]
+    #print ("line_to_symbol %s" % line_to_symbol)
+    source = get_source(view)
+    arrMbrParts = Parser.extract_member_exp(line_to_symbol, source)
+    return [symbol,region,sym_line,arrMbrParts]
+
+# get tags by symbol.
+# If symbol == None --> return all tags
+# if findOnlyFirst: As soon as the symbol results in tags from the one of tag files, do not continue search 
+def get_symbol_tags(symbol, findOnlyFirst, tags_file, view):
+    tags = {} 
+    for tags_file in get_alternate_tags_paths(view, tags_file):
+        with TagFile(tags_file, SYMBOL) as tagfile:
+            tags = tagfile.get_tags_dict(
+                 symbol, filters=compile_filters(view))
+        if findOnlyFirst and tags:
+            break
+    return tags
 
 # Goto definition under cursor commands
 
 class JumpToDefinition:
     """
     Provider for NavigateToDefinition and SearchForDefinition commands.
+
     """
     @staticmethod
     def run(symbol, region, sym_line, mbrParts, view, tags_file):
-        # print('JumpToDefinition')
+        print('JumpToDefinition: ' + symbol)
 
-        tags = {}
-        for tags_file in get_alternate_tags_paths(view, tags_file):
-            with TagFile(tags_file, SYMBOL) as tagfile:
-                tags = tagfile.get_tags_dict(
-                    symbol, filters=compile_filters(view))
-            if tags:
-                break
+        tags = get_symbol_tags(symbol, True, tags_file, view)
 
         if not tags:
             return status_message('Can\'t find "%s"' % symbol)
@@ -659,27 +690,7 @@ class NavigateToDefinition(sublime_plugin.TextCommand):
 
     @ctags_goto_command(jump_directly=True)
     def run(self, view, args, tags_file):
-        region = view.sel()[0]
-        if region.begin() == region.end():  # point
-            region = view.word(region)
-
-            # handle special line endings for Ruby
-            language = view.settings().get('syntax')
-            endings = view.substr(
-                sublime.Region(
-                    region.end(),
-                    region.end() + 1))
-
-            if 'Ruby' in language and self.endings.match(endings):
-                region = sublime.Region(region.begin(), region.end() + 1)
-        symbol = view.substr(region)
-
-        sym_line = view.substr(view.line(region))
-        (row, col) = view.rowcol(region.begin())
-        line_to_symbol = sym_line[:col]
-        #print ("line_to_symbol %s" % line_to_symbol)
-        source = get_source(view)
-        arrMbrParts = Parser.extract_member_exp(line_to_symbol, source)
+        [symbol,region,sym_line,arrMbrParts] = parse_sym_line(view)
         return JumpToDefinition.run(
             symbol,
             region,
@@ -908,50 +919,98 @@ class GetAllCTagsList():
 
 
 class CTagsAutoComplete(sublime_plugin.EventListener):
+    import bisect
+
+    def remove_duplicates_tags_stable(self,ranked_tags):
+        seen = set()
+        seen_add = seen.add
+        return [tag for tag in ranked_tags if not (tag.symbol in seen or seen_add(tag.symbol))]
+
+    MIN_SCORE_TOP_TAGS = 6
+    MAX_TOP_TAGS = 4
+    MAX_TOP_SUB = 5
+    def combine_tags_with_sumblime_completions(self,ranked_tags,sub_results, view):
+
+        combined_comps = []
+        rtags = self.remove_duplicates_tags_stable(ranked_tags)
+        ## Top score tags
+        idx_first_tag_not_added = 0
+        for idx in range(0,min(self.MAX_TOP_TAGS,len(rtags))):
+            tag = rtags[idx]                                        
+            if tag.rank_score >= self.MIN_SCORE_TOP_TAGS:
+                print('Top tag:' + ' ' + tag.symbol + ' ' + str(tag.rank_score))  #TODO:Debug:Remove                
+                combined_comps.append(tag.symbol)
+                ++idx_first_tag_not_added
+            
+        ## Top score sub results
+        
+        idx_first_subres_not_added = 0
+        for idx_sub in range(0,min(self.MAX_TOP_SUB,len(sub_results))):
+            sub_res = sub_results[idx_sub]
+            if idx_first_subres_not_added < self.MAX_TOP_SUB:
+                print('Top sub:'+ sub_res)  #TODO:Debug:Remove
+                combined_comps.append(sub_res)
+                ++idx_first_subres_not_added
+            
+        # TODO:HIGH: Re-Rank sublime result higher if it appears (whole word) above cur-pos in 10 lines distance.
+        # For each of the top sublime results, find_all occurrences in current file.
+        # For each occurrence: test how far is it from the current sel_idx (editor cursor at completion point)                 
+        # region = view.sel()[0]
+        # sel_idx = region.begin()
+        # occr = [rg.begin() for rg in view.find_all(comp,0)]
+        # idx_closest_before = bisect.bisect_left(occr, sel_idx)
+        # idx_closest_after = bisect.bisect_right(occr, sel_idx)
+        # TODO: May occur only before but not after (or only after)  
+
+        ## TODO:HIGH: Add the remaining sublime and tags
+        # Currenly, take 1 from tags, 1 from sublime - alteranting to merge to 2 lists.
+        remain_tags_results = [tag.symbol for tag in rtags[idx_first_tag_not_added:]]
+        print('autocomplete: tags_results=' + str([tag.symbol for tag in rtags]))
+        remain_subres = [res for res in sub_results[idx_first_subres_not_added:]]
+        remain_comps = list(chain.from_iterable(zip(remain_tags_results,remain_subres)))
+        return remove_duplicates_stable(combined_comps + remain_comps)
 
     def on_query_completions(self, view, prefix, locations):
         if setting('autocomplete'):
             prefix = prefix.strip().lower()
-            tags_path = view.window().folders()[0] + '/' + setting('tag_file')
 
-            sub_results = [v.extract_completions(prefix)
-                           for v in sublime.active_window().views()]
-            sub_results = [(item, item) for sublist in sub_results
+            sub_results = [v.extract_completions(prefix) 
+                            for v in sublime.active_window().views()]
+            sub_results = [item for sublist in sub_results
                            for item in sublist]  # flatten
 
-            if GetAllCTagsList.ctags_list:
-                results = [sublist for sublist in GetAllCTagsList.ctags_list
-                           if sublist[0].lower().startswith(prefix)]
-                results = sorted(set(results).union(set(sub_results)))
-
-                return results
-            else:
+            if not GetAllCTagsList.ctags_list:
                 tags = []
 
-                # check if a project is open and the tags file exists
-                if not (view.window().folders() and os.path.exists(tags_path)):
-                    return tags
+                print('before get_tags_list') #TODO:Debug:Remove
+                
+                # TODO: handle multiple 
+                for tags_file in get_alternate_tags_paths(view, setting('tag_file')):
+                    with TagFile(tags_file, SYMBOL) as tagfile:
+                        single_file_tags = tagfile.get_tags_list(None, False)
+                        tags.extend(single_file_tags) # add the list of single tags file to global tags list
 
-                if sublime.platform() == "windows":
-                    prefix = ""
-                else:
-                    prefix = "\\"
-
-                f = os.popen(
-                    "awk \"{ print " + prefix + "$1 }\" \"" + tags_path + "\"")
-
-                for i in f.readlines():
-                    tags.append([i.strip()])
-
-                tags = [(item, item) for sublist in tags
-                        for item in sublist]  # flatten
-                tags = sorted(set(tags))  # make unique
                 GetAllCTagsList.ctags_list = tags
-                results = [sublist for sublist in GetAllCTagsList.ctags_list
-                           if sublist[0].lower().startswith(prefix)]
-                results = sorted(set(results).union(set(sub_results)))
-
-                return results
+            
+            [symbol,region,sym_line,arrMbrParts] = parse_sym_line(view)
+            
+            print('symbol='+ symbol + ' prefix=' + prefix + ' arrMbrParts=' + ','.join(arrMbrParts))
+            
+            ## Filter tags by auto-complete prefix and rank them 
+            tags_filtered_prefix = [tag for tag in GetAllCTagsList.ctags_list
+                           if tag.symbol.lower().startswith(prefix)]
+            
+            rankmgr = RankMgr(region, arrMbrParts, view, symbol, sym_line)
+            ranked_tags = rankmgr.sort_tags(tags_filtered_prefix)
+            
+            ## Combine with sublime auto-complete results                       
+            #completions  = sorted(set(tags_results).union(set(sub_results)))
+            completions = self.combine_tags_with_sumblime_completions(ranked_tags,sub_results,view)
+            
+            print('autocomplete: sublime=' + str(sub_results))
+            print('completions=' + str(completions))
+            comps_final = [(item,item) for item in completions] 
+            return (comps_final,sublime.INHIBIT_WORD_COMPLETIONS) 
 
 # Test CTags commands
 
