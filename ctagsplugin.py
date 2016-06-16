@@ -921,7 +921,8 @@ class GetAllCTagsList():
 class CTagsAutoComplete(sublime_plugin.EventListener):
     import bisect
 
-    def remove_duplicates_tags_stable(self,ranked_tags):
+    @staticmethod
+    def remove_duplicates_tags_stable(ranked_tags):
         seen = set()
         seen_add = seen.add
         return [tag for tag in ranked_tags if not (tag.symbol in seen or seen_add(tag.symbol))]
@@ -929,10 +930,10 @@ class CTagsAutoComplete(sublime_plugin.EventListener):
     MIN_SCORE_TOP_TAGS = 6
     MAX_TOP_TAGS = 4
     MAX_TOP_SUB = 5
-    def combine_tags_with_sumblime_completions(self,ranked_tags,sub_results, view):
+    def combine_tags_with_sublime_completions(self,ranked_tags,sub_results, view):
 
         combined_comps = []
-        rtags = self.remove_duplicates_tags_stable(ranked_tags)
+        rtags = CTagsAutoComplete.remove_duplicates_tags_stable(ranked_tags)
         ## Top score tags
         idx_first_tag_not_added = 0
         for idx in range(0,min(self.MAX_TOP_TAGS,len(rtags))):
@@ -971,7 +972,15 @@ class CTagsAutoComplete(sublime_plugin.EventListener):
         return remove_duplicates_stable(combined_comps + remain_comps)
 
     def on_query_completions(self, view, prefix, locations):
-        if setting('autocomplete'):
+        source = get_source(view)
+        # Does auto-complete supports current view lang ?
+        lang = get_lang_setting(source)
+        if lang:
+            exclude = lang.get('autocomplete_exclude')
+            if exclude:
+                return None
+
+        if setting('autocomplete'): # Can turn off autocomplete (for all langs) using a setting
             prefix = prefix.strip().lower()
 
             sub_results = [v.extract_completions(prefix) 
@@ -1005,12 +1014,14 @@ class CTagsAutoComplete(sublime_plugin.EventListener):
             
             ## Combine with sublime auto-complete results                       
             #completions  = sorted(set(tags_results).union(set(sub_results)))
-            completions = self.combine_tags_with_sumblime_completions(ranked_tags,sub_results,view)
+            completions = self.combine_tags_with_sublime_completions(ranked_tags,sub_results,view)
             
             print('autocomplete: sublime=' + str(sub_results))
             print('completions=' + str(completions))
             comps_final = [(item,item) for item in completions] 
-            return (comps_final,sublime.INHIBIT_WORD_COMPLETIONS) 
+            return (comps_final,sublime.INHIBIT_WORD_COMPLETIONS | sublime.INHIBIT_EXPLICIT_COMPLETIONS) 
+          #  return [('encodePathnameComponent(value)', 'encodePathnameComponent(${1:value})'), ('encodeURI(uri)', 'encodeURI(${1:uri})'), ('encodeURIComponent(uri)', 'encodeURIComponent(${1:uri})'), ('ewawuuuuuuuuu', 'ewawuuuuuuuuuu'), ('encodedPrefix\t(str)', 'encodedPrefix')];
+          #  return [('acc', 'acc'),('aaa', 'aaa'), ('abb', 'abb'), ('add', 'add'), ('aee','aee'), ('aa','aa')]
 
 # Test CTags commands
 
