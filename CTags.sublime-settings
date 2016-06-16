@@ -12,7 +12,7 @@
     // When enabled, this turns on a basic "auto-complete" feature, similar to
     // a very rudimentary "Intellisense(TM)". This is useful for providing
     // better suggestions than stock Sublime Text could provide.
-    "autocomplete": false,
+    "autocomplete": true,
 
     // Path to ctags executable.
     //
@@ -148,7 +148,15 @@
                             { 
                                 "this" : ["this"]
                             }   
-                       }
+                       },
+        "source.less": {
+                          "autocomplete_exclude" : true 
+                       },
+
+        "source.css": {
+                          "autocomplete_exclude" : true 
+                       },
+
     },
 
 
