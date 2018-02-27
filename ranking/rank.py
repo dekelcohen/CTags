@@ -106,7 +106,7 @@ class RankMgr:
 
         return (in_scope, no_scope)
 
-    RANK_MATCH_TYPE = 30
+    RANK_MATCH_TYPE = 60
     tag_types = None
 
     def get_type_rank(self, tag):
@@ -172,7 +172,8 @@ class RankMgr:
 
         rel_path_no_ext = rel_path.lstrip('.' + os.sep)
         rel_path_no_ext = os.path.splitext(rel_path_no_ext)[0]
-        pathParts = rel_path_no_ext.split(os.sep)
+        pathParts,dummy_ext = split_rel_path_ext(rel_path)
+        print("mbr_exp pathParts %s" % ",".join(pathParts)) # TODO:Debug:Remove
         if len(pathParts) >= 1 and len(
                 mbrParts) >= 1 and pathParts[-1].lower() == mbrParts[-1].lower():
             rank += self.RANK_EXACT_MATCH_RIGHTMOST_MBR_PART_TO_FILENAME
@@ -192,6 +193,163 @@ class RankMgr:
 
         return rank
 
+    def concat_import_file_ext_folder_default(self,resolved_path):
+        """
+        ) If file path without extension - 
+          ) If exist and is_folder  - concat /index
+          ) concat and test exist in a loop - .[ext1|ext2|...]
+        ) else test if exist
+
+        return (final path, True if file exist on disk) 
+        """
+        final_path = resolved_path
+        exist = False
+        exts = self.imports.get('file_extensions', [])
+        has_ext = len(os.path.splitext(resolved_path)[1]) > 0
+        if not has_ext or os.path.isdir(resolved_path):
+            file_path = resolved_path 
+            if os.path.isdir(resolved_path):
+                os.path.join(file_path, self.imports.get('default_folder_file', ''))
+            for ext in exts:
+                path_with_ext = file_path + "." + ext
+                exist = os.path.isfile(path_with_ext)
+                if exist:
+                    final_path = path_with_ext 
+                    break 
+
+
+        else:
+            exist = os.path.isfile(resolved_path)
+
+        return final_path,exist
+
+
+    def resolve_import_path(self,import_path):
+        """
+        1) Resolve import path:
+           a) Relative path to current file --> '../common/list' --> resolve to abspath
+           b) 'common/list' --> try to resolve under node_modules or parent paths
+           c) Imports-path env variable name / list of folders
+           d) Try file.exist with file extensions: folder (no extension), .js, .jsx, .es6 -- lang setting('extensions') 
+              ) extensions are optional in imports - they may exist
+           e) If exist resolved path 
+              ) If folder --> concat /index.js  
+        """
+        if len(import_path) == 0:
+            print(' error: resolve_import_path: expected non-empty import_path');
+            return ''
+
+        rel_re = self.imports.get('is_rel_path', None)
+        str_parent_search = self.imports.get('parent_search', None)
+        
+        resolved_path = import_path
+        # starts with '/' - abs path
+        if os.path.isabs(import_path) == True:
+            resolved_path = import_path
+        elif rel_re != None and re.search(rel_re,import_path) != None: # Relative path - ./ or ../ - join it with current file name
+            resolved_path = os.path.join(self.view.file_name(),imported_path)
+        
+        #TODO: parent search + node_modules concat else:
+        #    parent_search = str_parent_search.lower()  == 'true'  
+
+        path_file_exist = self.concat_import_file_ext_folder_default(resolved_path)    
+
+        return path_file_exist
+
+    def prepare_import_rank(self, mbrParts):
+        """
+        1) Match mbr_exp or function-call to import directive 
+        2) Resolve import path:  
+        """
+        def_path_info = ('',False)
+        if hasattr(self, 'import_resolved_path_info'):
+            return self.import_resolved_path_info
+        imported_symbol = mbrParts[0] if len(mbrParts) > 0 else self.symbol
+        self.imports = self.lang.get('imports', {})
+        imports_re = self.imports.get('sym_to_import_path', None)
+        if imports_re is None:
+            return def_path_info
+        cur_re = imports_re.replace('__symbol__', imported_symbol)
+        print("cur_re=%s" % cur_re)
+        # view.find(cur_re) --> Region --> extract Region text --> re.search --> get re group[0] --> imported path
+        rgn_imp = self.view.find(cur_re,0)
+        str_imp = self.view.substr(rgn_imp)
+        print("str_imp=%s" % str_imp)
+        if len(str_imp) == 0:
+            self.import_resolved_path_info = def_path_info
+            return self.import_resolved_path_info
+        m = re.search(cur_re,str_imp)
+        print("m.group(1)=%s" % m.group(1))
+        # Resolve imported path
+
+        final_path, exist = self.resolve_import_path(m.group(1))
+        self.import_resolved_path_info = (final_path, exist) # store path split into sgements (optional drive+folders+optionally file)  
+        
+        print("final_path=%s" % final_path ) # TODO:Debug:Remove
+        
+
+        return self.import_resolved_path_info
+
+    RANK_IMPORT_FIRST_SEGS_MATCH = 20 # First 2 segments weigh 20 each. 3rd and above - 2 each. 2 first segs match rank 30 - higher than mbr_exp
+    RANK_IMPORT_REMAIN_SEGS_MATCH = 2
+    RANK_IMPORT_EXT_MATCH = 2
+
+    def get_import_rank(self, rel_path, mbrParts):
+        """
+        Imported symbols Ranking: const {createServer} = require('https') --> given call to createServer() Rank higher candiates tags path names that match .*/https/index.js 
+        Rules:
+        1) list.provider.add() --> mbrPaths = ['list','provider'] --> use leftmost mbrPart (or symbol itself if no mbrParts - see createServer above) 
+           --> extract path of matching import {list} from 'utils/datastructs'
+        2) Resolve import path:           
+        3) Symbols from imported file get high rank
+            ) Resolved Path matching against tag file partial paths: count matching segments from the right
+            ) If this is a file (file_exist - resolved to a file on disk) - require match on right-most segment
+              ) else (not sure if file or folder), allow either match of right-most seg or: match second segment + right-most == index.<one of the default exts>   
+              ) Ex: import 'utils' --> utils is a  folder -> didn't find utils/index.js --> allow to match also second from the right 
+            ) count how many segments match (starting from the right-most/second above) up to max 4 (we do not need to match more)
+            ) match ext - bonus point
+            ) Q: How to rank tags from imports (only if reliabley found a match) higher than mbr_exp and This (samefile) ?
+            ) A: Reliable match: min of 2 matching segs: import {getLogger} from 'utils' --> require 4th/3rd - unmatched/2nd=utils/right-most=index.js 
+        """
+        rank = 0
+        importPath, file_exist = self.prepare_import_rank(mbrParts)
+        importPathParts, ext_importPath = split_rel_path_ext(importPath)
+        print("importPathParts=%s" % ",".join(importPathParts))
+        print("ext_importPath=%s" % ext_importPath) 
+        importPathParts.reverse() 
+        # 3) Resolved Path matching against tag file partial paths
+        # TODO: Rank weights higher than mbr_exp, but not too high ...
+        relPathParts, ext_relPath = split_rel_path_ext(rel_path) # TODO:Debug:Remove
+        print("relPathParts=%s" % ",".join(relPathParts))
+        print("ext_relPath=%s" % ext_relPath)
+        relPathParts.reverse()
+
+        idx_imp = 0
+        num_match = 0
+
+        for relPart in relPathParts:
+            if idx_imp > len(importPathParts) - 1:
+                break
+            if relPart.lower() != importPathParts[idx_imp].lower():
+                if not file_exist and idx_imp == 0 and relPart.lower() == self.imports.get('default_folder_file', ''):
+                    num_match += 1
+                    continue
+                break
+                
+            idx_imp += 1
+            num_match += 1
+
+
+        if num_match >= 2:
+            # num seg matches  + ext match--> rank
+            rank += min(2,num_match) * self.RANK_IMPORT_FIRST_SEGS_MATCH
+            rank += max(0,num_match - 2) *  self.RANK_IMPORT_REMAIN_SEGS_MATCH
+            rank += self.RANK_IMPORT_EXT_MATCH if ext_importPath == ext_relPath else 0 # file extension match - rank higher             
+        
+        print("import rank=%d" % rank)
+        return rank
+
+
     def get_combined_rank(self, tag, mbrParts):
         """
         Calculate rank score per tag, combining several heuristics
@@ -207,6 +365,9 @@ class RankMgr:
 
         # Object Member Expression File Ranking
         rank += self.get_mbr_exp_match_tagfile_rank(rel_path, mbrParts)
+
+        # Imported symbols Ranking
+        rank += self.get_import_rank(rel_path, mbrParts)
 
 #       print('rank = %d' % rank);
         return rank

@@ -138,3 +138,26 @@ def remove_duplicates_stable(seq):
     seen = set()
     seen_add = seen.add
     return [x for x in seq if not (x in seen or seen_add(x))]
+
+def split_path_components(path):
+    folders = []
+    while 1:
+        path, folder = os.path.split(path)
+        if folder != "":
+            folders.append(folder)
+        else:
+            if path != "":
+                folders.append(path)
+            break
+    folders.reverse()
+    return folders
+
+def split_rel_path_ext(rel_path):
+    rel_path_no_prefix = rel_path.lstrip('.' + os.sep + os.path.altsep)
+    pathParts = split_path_components(rel_path_no_prefix)
+    if len(pathParts) == 0: return pathParts, ''
+    # Split ext from the rightmost pathPart 
+    idxLast = len(pathParts)-1
+    file_no_ext,ext = os.path.splitext(pathParts[idxLast])
+    pathParts[idxLast] = file_no_ext
+    return pathParts, ext
