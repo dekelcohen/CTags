@@ -247,7 +247,10 @@ class RankMgr:
         if os.path.isabs(import_path) == True:
             resolved_path = import_path
         elif rel_re != None and re.search(rel_re,import_path) != None: # Relative path - ./ or ../ - join it with current file name
-            resolved_path = os.path.join(self.view.file_name(),imported_path)
+            folder_name = os.path.split(self.view.file_name())[0]
+            joined_path = os.path.join(folder_name,import_path)
+            print('joined_path = %s' % joined_path)
+            resolved_path = os.path.realpath(joined_path)   
         
         #TODO: parent search + node_modules concat else:
         #    parent_search = str_parent_search.lower()  == 'true'  
@@ -275,14 +278,17 @@ class RankMgr:
         rgn_imp = self.view.find(cur_re,0)
         str_imp = self.view.substr(rgn_imp)
         print("str_imp=%s" % str_imp)
-        if len(str_imp) == 0:
+        m = re.search(cur_re,str_imp)
+        if m is None:
             self.import_resolved_path_info = def_path_info
             return self.import_resolved_path_info
-        m = re.search(cur_re,str_imp)
-        print("m.group(1)=%s" % m.group(1))
+        
+        last_grp = m.group(len(m.groups()))
+        print("last_grp=%s" % last_grp)
+
         # Resolve imported path
 
-        final_path, exist = self.resolve_import_path(m.group(1))
+        final_path, exist = self.resolve_import_path(last_grp)
         self.import_resolved_path_info = (final_path, exist) # store path split into sgements (optional drive+folders+optionally file)  
         
         print("final_path=%s" % final_path ) # TODO:Debug:Remove

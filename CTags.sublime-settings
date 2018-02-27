@@ -129,7 +129,7 @@
 
                          "imports": 
                          { 
-                            "sym_to_import_path": "import.*?[ \\{,]+__symbol__[ \\},]+.*?from\\s+[\"'](.*?)[\"']|\\s*list\\s*=\\s*require\\s*\\(\\s*[\"'](.*?)[\"']\\s*\\)",
+                            "sym_to_import_path": "import.*?[ \\{,]+__symbol__[ \\},]+.*?from\\s+[\"'](.*?)[\"']|\\s*__symbol__\\s*=\\s*require\\s*\\(\\s*[\"'](.*?)[\"']\\s*\\)",
                             "is_rel_path" : "^\\.{1,2}\\/",
                             "parent_search" : "true", // import 'utils/strings' --> lookup in current + all parent folders until package.json
                             "file_extensions" : ["js","jsx","es", "es6"], //import 'folder/file' --> add file extensions if not specified 
