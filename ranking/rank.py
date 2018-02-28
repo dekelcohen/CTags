@@ -283,12 +283,17 @@ class RankMgr:
             self.import_resolved_path_info = def_path_info
             return self.import_resolved_path_info
         
-        last_grp = m.group(len(m.groups()))
-        print("last_grp=%s" % last_grp)
+        imp_path = None
+        for i in range(1,len(m.groups()) + 1):
+            imp_path = m.group(i)
+            if imp_path != None and len(imp_path) > 0:
+                break
 
+        print("imp_path=%s" % imp_path)
+        
         # Resolve imported path
 
-        final_path, exist = self.resolve_import_path(last_grp)
+        final_path, exist = self.resolve_import_path(imp_path)
         self.import_resolved_path_info = (final_path, exist) # store path split into sgements (optional drive+folders+optionally file)  
         
         print("final_path=%s" % final_path ) # TODO:Debug:Remove
