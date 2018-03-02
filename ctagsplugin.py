@@ -35,7 +35,7 @@ except ImportError:  # running tests
 
 import ctags
 from ctags import (FILENAME, parse_tag_lines, PATH_ORDER, SYMBOL,
-                   TagElements, TagFile, Tag)
+                   TagElements, TagFile, Tag, get_fields)
 from helpers.edit import Edit
 
 from helpers.common import *
@@ -382,6 +382,7 @@ def format_tag_for_quickopen(tag, show_path=True):
     format_ = []
     tag = ctags.TagElements(tag)
     f = ''
+    dispinfo = ctags.get_fields(tag).get('dispinfo','')
 
     for field in getattr(tag, 'field_keys', []):
         if field in PATH_ORDER:
@@ -389,12 +390,14 @@ def format_tag_for_quickopen(tag, show_path=True):
             f += string.Template(
                 '    %($field)s$punct%(symbol)s').substitute(locals())
 
-    format_ = [f % tag if f else tag.symbol, tag.ex_command]
+    format_ = [f % tag if f else tag.symbol, dispinfo if dispinfo else tag.ex_command]
     format_[1] = format_[1].strip()
 
     if show_path:
         format_.insert(1, tag.filename)
 
+    # print ('format_='+str(format_)) ## TODO:Debug:Remove    
+    
     return format_
 
 
@@ -644,7 +647,7 @@ def get_symbol_tags(symbol, findOnlyFirst, tags_file, view):
     return tags
 
 # Goto definition under cursor commands
-
+# __exit__
 class JumpToDefinition:
     """
     Provider for NavigateToDefinition and SearchForDefinition commands.

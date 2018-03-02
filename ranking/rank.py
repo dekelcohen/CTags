@@ -173,7 +173,7 @@ class RankMgr:
         rel_path_no_ext = rel_path.lstrip('.' + os.sep)
         rel_path_no_ext = os.path.splitext(rel_path_no_ext)[0]
         pathParts,dummy_ext = split_rel_path_ext(rel_path)
-        print("mbr_exp pathParts %s" % ",".join(pathParts)) # TODO:Debug:Remove
+#        print("mbr_exp pathParts %s" % ",".join(pathParts)) # TODO:Debug:Remove
         if len(pathParts) >= 1 and len(
                 mbrParts) >= 1 and pathParts[-1].lower() == mbrParts[-1].lower():
             rank += self.RANK_EXACT_MATCH_RIGHTMOST_MBR_PART_TO_FILENAME
@@ -325,14 +325,14 @@ class RankMgr:
         rank = 0
         importPath, file_exist = self.prepare_import_rank(mbrParts)
         importPathParts, ext_importPath = split_rel_path_ext(importPath)
-        print("importPathParts=%s" % ",".join(importPathParts))
-        print("ext_importPath=%s" % ext_importPath) 
+        # print("importPathParts=%s" % ",".join(importPathParts))
+        # print("ext_importPath=%s" % ext_importPath) 
         importPathParts.reverse() 
         # 3) Resolved Path matching against tag file partial paths
         # TODO: Rank weights higher than mbr_exp, but not too high ...
         relPathParts, ext_relPath = split_rel_path_ext(rel_path) # TODO:Debug:Remove
-        print("relPathParts=%s" % ",".join(relPathParts))
-        print("ext_relPath=%s" % ext_relPath)
+        # print("relPathParts=%s" % ",".join(relPathParts))
+        # print("ext_relPath=%s" % ext_relPath)
         relPathParts.reverse()
 
         idx_imp = 0
@@ -357,7 +357,7 @@ class RankMgr:
             rank += max(0,num_match - 2) *  self.RANK_IMPORT_REMAIN_SEGS_MATCH
             rank += self.RANK_IMPORT_EXT_MATCH if ext_importPath == ext_relPath else 0 # file extension match - rank higher             
         
-        print("import rank=%d" % rank)
+        # print("import rank=%d" % rank)
         return rank
 
 

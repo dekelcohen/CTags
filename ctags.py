@@ -48,6 +48,15 @@ TAG_PATH_SPLITTERS = ('/', '.', '::', ':')
 
 # Helper functions
 
+def get_fields(tag):
+    fields = tag.get('fields')
+    dct_fields = None
+    try:
+      dct_fields = dict(f.split(':', 1) for f in fields.split('\t'))
+    except:
+      print("Error splitting fields : %s" % fields.split('\t'))
+    return dct_fields
+
 def splits(string, *splitters):
     """
     Split a string on a number of splitters.
@@ -208,12 +217,13 @@ def process_fields(tag):
         return {}
 
     # split the fields string into a dictionary of key-value pairs
-    result = dict(f.split(':', 1) for f in fields.split('\t'))
+    result = get_fields(tag)
 
     # append all keys to the dictionary
     result['field_keys'] = sorted(result.keys())
 
     return result
+
 
 def create_tag_path(tag):
     """
