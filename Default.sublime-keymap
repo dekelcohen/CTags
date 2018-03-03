@@ -12,6 +12,10 @@
         "keys": ["ctrl+t", "ctrl+y"]
     },
     {
+        "command": "show_completions",
+        "keys": ["ctrl+y", "ctrl+y"]
+    },
+    {
         "command": "jump_prev",
         "keys": ["ctrl+t", "ctrl+b"]
     },

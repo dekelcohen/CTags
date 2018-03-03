@@ -396,10 +396,18 @@ def format_tag_for_quickopen(tag, show_path=True):
     if show_path:
         format_.insert(1, tag.filename)
 
-    # print ('format_='+str(format_)) ## TODO:Debug:Remove    
+#    print ('format_='+str(format_)) ## TODO:Debug:Remove    
     
     return format_
 
+def format_tags_for_quickpanel(formatter,tags):
+    args, display = [], []
+
+    for tag in tags:
+        display.append(formatter(tag))
+        args.append(tag)
+
+    return args, display
 
 def prepare_for_quickpanel(formatter=format_tag_for_quickopen):
     """
@@ -410,13 +418,7 @@ def prepare_for_quickpanel(formatter=format_tag_for_quickopen):
     :returns: tuple containing tag and formatted string representation of tag
     """
     def compile_lists(sorter):
-        args, display = [], []
-
-        for t in sorter():
-            display.append(formatter(t))
-            args.append(t)
-
-        return args, display
+        return format_tags_for_quickpanel(formatter, sorter())
 
     return compile_lists
 
@@ -736,6 +738,106 @@ class SearchForDefinition(sublime_plugin.WindowCommand):
 
     def on_cancel(self):
         pass
+
+
+class MyReplaceText(sublime_plugin.TextCommand):
+    """
+    Replace text in a view
+
+    Command displays a panel with symbols matching the current prefix - ranked 
+    """
+    is_enabled = check_if_building
+
+    def is_visible(self):
+        return False
+
+    def run(self,edit,replaceText,regionBegin,regionEnd ): 
+        # print('MyReplaceText replaceText=' + replaceText + ' regionBegin=' + str(regionBegin) ) 
+        self.view.replace(edit, sublime.Region(regionBegin,regionEnd), replaceText)
+
+class ShowCompletions(sublime_plugin.TextCommand):
+    """
+    Provider for the ``show_completions`` command.
+
+    Command displays a panel with symbols matching the current prefix - ranked 
+    """
+    is_enabled = check_if_building
+
+    def is_visible(self):
+        return setting('show_context_menus')
+
+    def run(self,edit):
+        view = self.view
+        [prefix,region,sym_line,arrMbrParts] = parse_sym_line(view)
+        print('ShowCompletions prefix=' + prefix + ' arrMbrParts=' + ','.join(arrMbrParts))
+        
+        source = get_source(view)
+        # Does auto-complete supports current view lang ?
+        lang = get_lang_setting(source)
+        if lang:
+            exclude = lang.get('autocomplete_exclude')
+            if exclude:
+                return None
+
+        prefix = prefix.strip().lower()
+
+        sub_results = [v.extract_completions(prefix) 
+                        for v in sublime.active_window().views()]
+        sub_results = [item for sublist in sub_results
+                       for item in sublist]  # flatten
+
+        if not GetAllCTagsList.ctags_list:
+            tags = []
+
+            print('before get_tags_list') #TODO:Debug:Remove
+            
+            # TODO: handle multiple 
+            for tags_file in get_alternate_tags_paths(view, setting('tag_file')):
+                with TagFile(tags_file, SYMBOL) as tagfile:
+                    single_file_tags = tagfile.get_tags_list(None, False)
+                    tags.extend(single_file_tags) # add the list of single tags file to global tags list
+
+            GetAllCTagsList.ctags_list = tags
+            
+        
+        ## Filter tags by auto-complete prefix and rank them 
+        tags_filtered_prefix = [tag for tag in GetAllCTagsList.ctags_list
+                       if tag.symbol.lower().startswith(prefix)]
+        
+        rankmgr = RankMgr(region, arrMbrParts, view, prefix, sym_line)
+        ranked_tags = rankmgr.sort_tags(tags_filtered_prefix)
+        
+        ## Combine with sublime auto-complete results                       
+        
+        # TODO: Investigate combining results with sublime or maybe replacing it (it has limitations) 
+        # completions = self.combine_tags_with_sublime_completions(ranked_tags,sub_results,view)
+        self.display_panel(format_tags_for_quickpanel(format_tag_for_quickopen,ranked_tags),view, edit, region)
+        
+        print('autocomplete: sublime=' + str(sub_results))
+
+    def display_panel(self,format_completions,view, edit, region):
+        def on_select(i):
+            if i != -1:
+                # Work around bug in ST3 where the quick panel keeps focus after
+                # selecting an entry.
+                # See https://github.com/SublimeText/Issues/issues/39
+                view.window().run_command('hide_overlay')
+
+                # TODO:HIGH: Replace current prefix with selected completion
+                print('Selected completion=' + args[i].symbol)
+                view.window().run_command('my_replace_text',  dict({ "replaceText" : args[i].symbol, "regionBegin": region.begin(), "regionEnd": region.end()})) 
+                
+                
+        args, display = format_completions
+        if len(args) == 1:
+            on_select(0)
+        else:            
+            view.window().show_quick_panel(display, on_select)
+        
+          
+        
+        # TODO:HIGH: format result before calling show_tag_panel
+        # show_tag_panel(view, result, True)
 
 # Show Symbol commands
 
